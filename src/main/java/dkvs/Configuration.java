@@ -5,23 +5,28 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Created by amir.
  */
 public class Configuration {
     private static final String PROPERTY_FILE = "dkvs.properties";
-    private static int timeout;
-    private static int numberOfservers;
-    private static Map<String, Integer> addressMap = new HashMap<>();
-    private static Map<Integer, Integer> numberToPortMap = new HashMap<>();
-    private static Map<Integer, String> numberToIPMap = new HashMap<>();
+    private static volatile int timeout;
+    private static volatile int numberOfServers;
+    private static volatile Map<String, Integer> addressMap = new ConcurrentHashMap<>();
+    private static volatile Map<Integer, Integer> numberToPortMap = new ConcurrentHashMap<>();
+    private static volatile Map<Integer, String> numberToIPMap = new ConcurrentHashMap<>();
+
     static {
+        addressMap = new HashMap<>();
+        numberToPortMap = new HashMap<>();
+        numberToIPMap = new HashMap<>();
         try (FileInputStream inputStream = new FileInputStream(PROPERTY_FILE)) {
             Properties properties = new Properties();
             properties.load(inputStream);
-            numberOfservers = properties.size() - 1;
-            for(String key : properties.stringPropertyNames()) {
+            numberOfServers = properties.size() - 1;
+            for (String key : properties.stringPropertyNames()) {
                 String value = properties.getProperty(key);
                 if (key.equals("timeout")) {
                     timeout = Integer.valueOf(value);
@@ -30,16 +35,17 @@ public class Configuration {
                     numberToPortMap.put(Integer.valueOf(key.substring(5)), Integer.valueOf(value.split(":")[1]));
                     addressMap.put("/" + value, Integer.valueOf(key.substring(5)));
                 }
-                System.out.println(key + " => " + value);
+                //System.out.println(key + " => " + value);
             }
         } catch (IOException e) {
             System.err.println("Can't load " + PROPERTY_FILE + " file");
         }
     }
 
-    public static int getNumberOfservers() {
-        return numberOfservers;
+    public static int getNumberOfServers() {
+        return numberOfServers;
     }
+
     public static int getTimeout() {
         return timeout;
     }
@@ -47,14 +53,8 @@ public class Configuration {
     public static int getPort(int serverNumber) {
         return numberToPortMap.get(serverNumber);
     }
+
     public static String getIP(int serverNumber) {
         return numberToIPMap.get(serverNumber);
     }
-    public static int getServerNumber(String address) {
-        if (!addressMap.containsKey(address)) {
-            return -1;
-        }
-        return addressMap.get(address);
-    }
-
 }

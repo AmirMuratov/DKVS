@@ -53,6 +53,10 @@ public class OperationLogger {
         log.add(op);
     }
 
+    public void addOperation(Operation op) {
+        log.add(op);
+    }
+
     private void flushOp(Operation op) {
         try {
             writer.write(op.toString());
@@ -64,6 +68,15 @@ public class OperationLogger {
 
     public void commitAll() {
         for (; lastToCommit < log.size(); lastToCommit++) {
+            Operation curOp = log.get(lastToCommit);
+            curOp.setCommited();
+            service.commit(curOp); //commit operation to map
+            flushOp(curOp); //write log
+        }
+    }
+
+    public void commitAllUntil(int threshold) {
+        for (; lastToCommit < threshold; lastToCommit++) {
             Operation curOp = log.get(lastToCommit);
             curOp.setCommited();
             service.commit(curOp); //commit operation to map

@@ -47,15 +47,6 @@ public class Operation {
         return value;
     }
 
-    public void applyOperation(Map<String, String> map) {
-        if (type.equals(Type.SET)) {
-            map.put(key, value);
-        }
-        if (type.equals(Type.DELETE)) {
-            map.remove(key);
-        }
-    }
-
     public void setCommited() {
         isCommited = true;
     }
