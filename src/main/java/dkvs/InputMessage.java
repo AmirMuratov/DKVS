@@ -1,55 +1,71 @@
 package dkvs;
 
-import dkvs.OperationLogger.Operation;
+import dkvs.operationlogger.Operation;
 import dkvs.sockets.SocketHandler;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Created by amir.
  */
 public class InputMessage {
-    //PING
-    //PONG
-    //COMMIT
+    //STORED
+    //NOT_FOUND
+    //DELETED
     //GET key
     //SET key value
     //DELETE key
-    //PREPARE_OK operation_number
+    //RECOVERY last_op
+    //RECOVERY_RESPONSE view log
+
+    //COMMIT viewNumber
+    //PREPARE_OK viewNumber operation_number
     //PREPARE view_number operation_number (DELETE key | SET key value)
+
+    //START_VIEW_CHANGE view replica
+    //START_VIEW view log
+    int replica;
     int viewNumber;
     int operationNumber;
-    //int commitNumber;
+    List<Operation> log;
     Operation op;
-    MessageType type;
     String key;
-    String value;
+    MessageType type;
     SocketHandler socketHandler;
 
     public InputMessage(String request, SocketHandler socket) {
         socketHandler = socket;
-        System.out.println("REQUEST:|" + request + "|");
         String[] segments = request.split(" ");
         switch (segments[0]) {
-            case "PING":
-                type = MessageType.PING;
+            case "DISCONNECT":
+                type = MessageType.DISCONNECT;
+                replica = Integer.valueOf(segments[1]);
                 return;
-            case "PONG":
-                type = MessageType.PONG;
-                return;
-            case "COMMIT":
-                type = MessageType.COMMIT;
+            case "STORED":
+            case "NOT_FOUND":
+            case "DELETED":
+                type = MessageType.valueOf(segments[0]);
                 return;
             case "GET":
                 type = MessageType.GET;
                 key = segments[1];
                 return;
+            case "RECOVERY":
+                type = MessageType.RECOVERY;
+                operationNumber = Integer.valueOf(segments[1]);
+                return;
             case "SET":
                 type = MessageType.SET;
-                key = segments[1];
-                value = segments[2];
+                op = Operation.getSetOperation(segments[1], segments[2]);
                 return;
             case "DELETE":
                 type = MessageType.DELETE;
-                key = segments[1];
+                op = Operation.getDeleteOperation(segments[1]);
+                return;
+            case "COMMIT":
+                type = MessageType.COMMIT;
+                operationNumber = Integer.valueOf(segments[1]);
                 return;
             case "PREPARE_OK":
                 type = MessageType.PREPARE_OK;
@@ -68,6 +84,32 @@ public class InputMessage {
                         op = Operation.getSetOperation(segments[4], segments[5]);
                         return;
                 }
+            case "RECOVERY_RESPONSE":
+            case "START_VIEW":
+            case "DO_VIEW_CHANGE":
+                type = MessageType.valueOf(segments[0]);
+                viewNumber = Integer.valueOf(segments[1]);
+                if (segments.length == 3) {
+                    replica = Integer.valueOf(segments[2]);
+                    return;
+                }
+                int i = 2;
+                log = new ArrayList<>();
+                while (i < segments.length) {
+                    if (segments[i].equals("SET")) {
+                        log.add(Operation.getSetOperation(segments[i + 1], segments[i + 2]));
+                        i += 3;
+                    } else if (segments[i].equals("DELETE")) {
+                        log.add(Operation.getDeleteOperation(segments[i + 1]));
+                        i += 2;
+                    }
+                }
+                return;
+            case "START_VIEW_CHANGE":
+                type = MessageType.START_VIEW_CHANGE;
+                viewNumber = Integer.valueOf(segments[1]);
+                replica = Integer.valueOf(segments[2]);
+                return;
             default:
         }
 
@@ -76,7 +118,6 @@ public class InputMessage {
 
     @Override
     public String toString() {
-
         //TODO
         return null;
     }

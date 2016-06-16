@@ -1,4 +1,4 @@
-package dkvs.OperationLogger;
+package dkvs.operationlogger;
 
 import dkvs.kvsservice.KeyValueStorage;
 
@@ -12,16 +12,36 @@ import java.util.List;
 public class OperationLogger {
     private List<Operation> log;
     private Writer writer;
-    private int lastToCommit;
+    private int lastCommited;
     private static final String FILENAME = "logs/dksv_%d.log";
     private KeyValueStorage service;
+    private boolean recovery;
+    File logFile;
+
+    public Operation getOperation(int id) {
+        return log.get(id);
+    }
+    public int getLastCommited() {
+        return lastCommited;
+    }
+    public int getLastPrepared() {
+        return log.size() - 1;
+    }
+    public boolean needRecovery() {
+        return recovery;
+    }
+    public KeyValueStorage getService() {
+        return service;
+    }
 
     public OperationLogger(int id, KeyValueStorage service) {
         this.service = service;
-        lastToCommit = 0;
+        lastCommited = -1;
         log = new ArrayList<>();
-        File logFile = new File(String.format(FILENAME, id));
+        recovery = false;
+        logFile = new File(String.format(FILENAME, id));
         if (logFile.exists()) {
+            recovery = true;
             try (BufferedReader reader = new BufferedReader(new FileReader(logFile))) {
                 String line = reader.readLine();
                 while (line != null) {
@@ -40,7 +60,15 @@ public class OperationLogger {
         } catch (IOException e) {
             System.err.println("Logger can't write to file");
         }
-        commitAll();
+        while (lastCommited + 1 < log.size()) {
+            lastCommited++;
+            Operation curOp = log.get(lastCommited);
+            curOp.setCommited();
+            service.commit(curOp); //commit operation to map
+        }
+    }
+    public void clearLog() {
+        logFile.delete();
     }
 
     public void addDeleteOperation(String key) {
@@ -59,7 +87,7 @@ public class OperationLogger {
 
     private void flushOp(Operation op) {
         try {
-            writer.write(op.toString());
+            writer.write(op.toString() + "\n");
             writer.flush();
         } catch (IOException e) {
             System.err.println("Can't write to log file");
@@ -67,17 +95,24 @@ public class OperationLogger {
     }
 
     public void commitAll() {
-        for (; lastToCommit < log.size(); lastToCommit++) {
-            Operation curOp = log.get(lastToCommit);
+        while (lastCommited + 1 < log.size()) {
+            lastCommited++;
+            Operation curOp = log.get(lastCommited);
             curOp.setCommited();
             service.commit(curOp); //commit operation to map
             flushOp(curOp); //write log
         }
     }
 
+    public void commitOperations(List<Operation> operations) {
+        operations.forEach(log::add);
+        commitAll();
+    }
+
     public void commitAllUntil(int threshold) {
-        for (; lastToCommit < threshold; lastToCommit++) {
-            Operation curOp = log.get(lastToCommit);
+        while (lastCommited + 1 < threshold) {
+            lastCommited++;
+            Operation curOp = log.get(lastCommited);
             curOp.setCommited();
             service.commit(curOp); //commit operation to map
             flushOp(curOp); //write log

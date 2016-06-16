@@ -1,11 +1,14 @@
 package dkvs;
 
-import dkvs.OperationLogger.OperationLogger;
+import dkvs.operationlogger.Operation;
+import dkvs.operationlogger.OperationLogger;
 import dkvs.kvsservice.KeyValueStorage;
+import dkvs.sockets.ServerSocketListener;
 import dkvs.sockets.SocketHandler;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -14,7 +17,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 public class PrimaryServer implements Runnable {
     private int replicaNumber;
     private int view;
-    private LinkedBlockingQueue<InputMessage> queue;
+    private BlockingQueue<InputMessage> queue;
     private SocketHandler[] serverList;
     private int curOperationNumber;
     private KeyValueStorage service;
@@ -22,18 +25,30 @@ public class PrimaryServer implements Runnable {
     private Map<Integer, Integer> currentOperations; //operationNumber -> number of received prepare_ok's
     private Map<Integer, InputMessage> clientMessages; //operationNumber -> message from client
 
-    public PrimaryServer(int replicaNumber, LinkedBlockingQueue<InputMessage> queue,
-                         SocketHandler[] serverList, int view) {
+    public PrimaryServer(int replicaNumber, ServerSocketListener listener) {
         this.currentOperations = new HashMap<>();
         this.clientMessages = new HashMap<>();
-        this.serverList = serverList;
+        this.serverList = listener.getServerList();
         this.replicaNumber = replicaNumber;
-        this.queue = queue;
+        this.queue = listener.getInputQueue();
         this.service = new KeyValueStorage();
         curOperationNumber = 0;
         this.logger = new OperationLogger(replicaNumber, service);
+        this.view = 0;
+    }
+
+    public PrimaryServer(int replicaNumber, OperationLogger logger, ServerSocketListener listener, int view) {
+        this.currentOperations = new HashMap<>();
+        this.clientMessages = new HashMap<>();
+        this.serverList = listener.getServerList();
+        this.replicaNumber = replicaNumber;
+        this.queue = listener.getInputQueue();
+        this.logger = logger;
+        this.service = logger.getService();
+        curOperationNumber = logger.getLastPrepared() + 1;
         this.view = view;
     }
+
     @Override
     public void run() {
         while (true) {
@@ -44,11 +59,6 @@ public class PrimaryServer implements Runnable {
                 break;
             }
             switch (curMessage.type) {
-                case PONG:
-                    continue;
-                case PING:
-                    curMessage.socketHandler.sendMessage(new OutputMessage("PONG"));
-                    continue;
                 case GET:
                     String key = curMessage.key;
                     String value = service.get(key);
@@ -59,34 +69,16 @@ public class PrimaryServer implements Runnable {
                     }
                     continue;
                 case SET:
-                    key = curMessage.key;
-                    value = curMessage.value;
-                    curOperationNumber++;
-                    logger.addSetOperation(key, value);
-                    //if (serverList.size() < Configuration.getNumberOfServers() / 2) {
-                    //    System.err.println("Can't reach consensus, servers working: " + serverList.size());
-                    //}
-                    for (SocketHandler handler : serverList) {
-                        if (handler != null) {
-                            String prepare = "PREPARE " + view +
-                                    " " + curOperationNumber + " SET " + key + " " + value;
-                            handler.sendMessage(new OutputMessage(prepare));
-                        }
-                    }
-                    currentOperations.put(curOperationNumber, 1);
-                    clientMessages.put(curOperationNumber, curMessage);
-                    continue;
                 case DELETE:
-                    key = curMessage.key;
                     curOperationNumber++;
-                    logger.addDeleteOperation(key);
-                    //if (serverList.size() < Configuration.getNumberOfServers() / 2) {
-                    //    System.err.println("Can't reach consensus, servers working: " + serverList.size());
-                    //}
+                    logger.addOperation(curMessage.op);
+                    String prepare = curMessage.type == MessageType.SET ? "PREPARE " + view +
+                            " " + curOperationNumber + " SET " +
+                            curMessage.op.getKey() + " " + curMessage.op.getValue() :
+                            "PREPARE " + view + " " + curOperationNumber + " DELETE " +
+                                    curMessage.op.getKey();
                     for (SocketHandler handler : serverList) {
                         if (handler != null) {
-                            String prepare = "PREPARE " + view +
-                                    " " + curOperationNumber + " DELETE " + key;
                             handler.sendMessage(new OutputMessage(prepare));
                         }
                     }
@@ -105,6 +97,11 @@ public class PrimaryServer implements Runnable {
                         // remove this operation from maps.
                         logger.commitAllUntil(operationNumber);
                         InputMessage clientsMessage = clientMessages.get(operationNumber);
+                        for (SocketHandler handler : serverList) {
+                            if (handler != null) {
+                                handler.sendMessage(new OutputMessage("COMMIT " + operationNumber));
+                            }
+                        }
                         switch (clientsMessage.type) {
                             case DELETE:
                                 clientsMessage.socketHandler.sendMessage(new OutputMessage("DELETED"));
@@ -117,6 +114,15 @@ public class PrimaryServer implements Runnable {
                         currentOperations.remove(operationNumber);
                         clientMessages.remove(operationNumber);
                     }
+                    continue;
+                case RECOVERY:
+                    int lastOperation = curMessage.operationNumber;
+                    StringBuilder msg = new StringBuilder();
+                    msg.append("RECOVERY_RESPONSE ").append(view).append(" ");
+                    for (int i = lastOperation + 1; i <= logger.getLastCommited(); i++) {
+                        msg.append(logger.getOperation(i).toString()).append(" ");
+                    }
+                    curMessage.socketHandler.sendMessage(new OutputMessage(msg.toString()));
                     continue;
                 default:
             }

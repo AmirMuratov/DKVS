@@ -1,6 +1,4 @@
-package dkvs.OperationLogger;
-
-import java.util.Map;
+package dkvs.operationlogger;
 
 /**
  * Created by amir.
@@ -62,7 +60,6 @@ public class Operation {
         if (type.equals(Type.SET)) {
             result.append(" ").append(value);
         }
-        result.append("\n");
         return result.toString();
     }
 

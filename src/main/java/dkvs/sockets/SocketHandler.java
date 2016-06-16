@@ -5,7 +5,7 @@ import dkvs.OutputMessage;
 
 import java.io.*;
 import java.net.Socket;
-import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -16,16 +16,17 @@ import java.util.concurrent.atomic.AtomicLong;
 public class SocketHandler {
     private final Thread writer;
     private final Thread listener;
-    private final LinkedBlockingQueue<OutputMessage> outputQueue;
+    private final BlockingQueue<OutputMessage> outputQueue;
     private final Socket socket;
     private final AtomicLong lastResponse;
     private final AtomicInteger serverNum;
+    private boolean stopped;
 
-
-    public SocketHandler(Socket socket, Queue<InputMessage> inputQueue, int serverNum, SocketHandler[] serverList) {
+    SocketHandler(Socket socket, int i, ServerSocketListener mainListener) {
+        stopped = false;
         lastResponse = new AtomicLong(System.currentTimeMillis());
         this.socket = socket;
-        this.serverNum = new AtomicInteger(serverNum);
+        this.serverNum = new AtomicInteger(i);
         outputQueue = new LinkedBlockingQueue<>();
         writer = new Thread(() -> {
             try (Writer writer = new PrintWriter(socket.getOutputStream())) {
@@ -33,6 +34,8 @@ public class SocketHandler {
                     try {
                         if (Thread.interrupted()) break;
                         OutputMessage message = outputQueue.take();
+                        System.out.println(String.format("sending message from %d to %d: %s",
+                                mainListener.replicaNumber, serverNum.get(), message.getText()));
                         writer.write(message.getText() + '\n');
                         writer.flush();
                     } catch (InterruptedException e) {
@@ -50,15 +53,22 @@ public class SocketHandler {
                     if (request == null) {
                         throw new IOException();
                     }
+                    lastResponse.set(System.currentTimeMillis());
+                    System.out.println(String.format("receiving message from %d to %d: %s",
+                            serverNum.get(), mainListener.replicaNumber, request));
                     if (request.startsWith("node ")) {
                         int node = Integer.valueOf(request.substring(5));
                         this.serverNum.set(node);
-                        serverList[node] = this;
+                        mainListener.serverList[node] = this;
+                        mainListener.clientsList.remove(this);
                         continue;
                     }
-                    System.out.println("new Message: " + request);
-                    lastResponse.set(System.currentTimeMillis());
-                    inputQueue.add(new InputMessage(request, this));
+                    if (request.equals("PONG")) continue;
+                    if (request.equals("PING")) {
+                        outputQueue.add(new OutputMessage("PONG"));
+                        continue;
+                    }
+                    mainListener.inputQueue.add(new InputMessage(request, this));
                 }
             } catch (IOException e) {
                 stop();
@@ -77,18 +87,19 @@ public class SocketHandler {
     }
 
     public void stop() {
-        System.out.println("Stopping " + serverNum + " socket");
-        try {
-            socket.close();
-        } catch (IOException e) {
-            System.err.println("Can't close socket(((");
+        if (!stopped) {
+            stopped = true;
+            System.out.println("Stopping socket");
+            try {
+                socket.close();
+            } catch (IOException e) {
+                System.err.println("Can't close socket(((");
+            }
+            writer.interrupt();
         }
-        writer.interrupt();
-        //TODO interrupt
-        listener.interrupt();
     }
 
-    public long getLastResponse() {
+    long getLastResponse() {
         return lastResponse.get();
     }
 

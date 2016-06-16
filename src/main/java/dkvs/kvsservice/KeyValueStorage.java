@@ -1,6 +1,6 @@
 package dkvs.kvsservice;
 
-import dkvs.OperationLogger.Operation;
+import dkvs.operationlogger.Operation;
 
 import java.util.HashMap;
 import java.util.Map;

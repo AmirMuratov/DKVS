@@ -17,10 +17,9 @@ public class Tester {
                 Main.main(s);
             }).start();
         }*/
-        String[] s = {"" + 3};
-        new Thread(() -> {
-            Main.main(s);
-        }).start();
+        //Main.start(1, false);
+        //Main.start(2, false);
+        //Main.start(3, false);
         /*new Thread(() -> {
             ServerSocket socket = null;
             try {
