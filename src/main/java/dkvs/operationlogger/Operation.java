@@ -9,21 +9,21 @@ public class Operation {
         DELETE, SET
     }
 
-    private boolean isCommited;
+    private boolean isCommitted;
     private Type type;
     private String key;
     private String value;
 
     public static Operation getDeleteOperation(String key) {
         Operation op = new Operation();
-        op.isCommited = false;
+        op.isCommitted = false;
         op.type = Type.DELETE;
         op.key = key;
         return op;
     }
     public static Operation getSetOperation(String key, String value) {
         Operation op = new Operation();
-        op.isCommited = false;
+        op.isCommitted = false;
         op.type = Type.SET;
         op.key = key;
         op.value = value;
@@ -46,11 +46,11 @@ public class Operation {
     }
 
     public void setCommited() {
-        isCommited = true;
+        isCommitted = true;
     }
 
-    public boolean isCommited() {
-        return isCommited;
+    public boolean isCommitted() {
+        return isCommitted;
     }
 
     @Override

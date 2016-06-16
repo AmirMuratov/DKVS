@@ -80,7 +80,7 @@ public class ServerSocketListener {
     }
 
     private void connectToServer(int serverNumber) {
-        //Trying to connect to only
+        //Trying to connect only
         //to (replicaNumber + 1) % size, (replicaNumber + 2) % size ... (replicaNumber + size / 2) % size
         int num = serverNumber > replicaNumber ? serverNumber : serverNumber + Configuration.getNumberOfServers();
         if (num - replicaNumber > Configuration.getNumberOfServers() / 2) {

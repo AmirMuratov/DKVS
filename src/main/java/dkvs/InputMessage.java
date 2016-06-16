@@ -75,7 +75,6 @@ public class InputMessage {
                 type = MessageType.PREPARE;
                 viewNumber = Integer.valueOf(segments[1]);
                 operationNumber = Integer.valueOf(segments[2]);
-                //commitNumber = Integer.valueOf(segments[4]);
                 switch (segments[3]) {
                     case "DELETE":
                         op = Operation.getDeleteOperation(segments[4]);
@@ -112,13 +111,5 @@ public class InputMessage {
                 return;
             default:
         }
-
-    }
-
-
-    @Override
-    public String toString() {
-        //TODO
-        return null;
     }
 }
